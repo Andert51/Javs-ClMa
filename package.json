@@ -1,0 +1,14 @@
+{
+  "name": "javs-clma",
+  "version": "1.0.0",
+  "description": "Javascript Basics + HTML + CSS",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev" : "nodemon index.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
