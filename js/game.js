@@ -1,38 +1,35 @@
-// Global Phaser, configuracion del juego
-//Para que funcione cualquier juego con phaser se necesita una config
-//el objeto global define donde carga el videojuego, en este caso
+/* global Phaser */
 
-import { createAnimations } from "../animations.js"
+import { createAnimations } from './animations.js'
+import { initAudio, playAudio } from './audio.js'
+import { checkControls } from './controls.js'
+import { initSpritesheet } from './spritesheet.js'
 
 const config = {
-
-    type: Phaser.AUTO, // webgl , canvas or auto, tipo de soporte, es un objeto global, auto usa wbgl primero
+    autoFocus: false,
+    type: Phaser.AUTO, // webgl, canvas
     width: 256,
-    height: 244, // Super Mario bros = resolution 256x244 px
-    backgroundColor: '#4682b4',
-    parent: 'game', // id in html, en que contenedor
+    height: 244,
+    backgroundColor: '#049cd8',
+    parent: 'game',
     physics: {
         default: 'arcade',
         arcade: {
-            gravity: {y: 300 },
-            debug: false
+            gravity: { y: 300 },
+            debug: true
         }
     },
     scene: {
-
-        preload, // se ejecuta para precragar recursos, cargar sprites, etc, ejec 1
-        create,  // se ejecuta cuando el juego comienza, dibujar los sprites, ejec 1
-        update  // se ejecuta en cada frame, ejec each frame
-
+        preload, // se ejecuta para precargar recursos
+        create, // se ejecuta cuando el juego comienza
+        update // se ejecuta en cada frame
     }
 }
 
-new Phaser.Game(config) //Inicializar el juego pasando la configuracion del juego
+new Phaser.Game(config)
+// this -> game -> el juego que estamos construyendo
 
-function preload () {
-    console.log('preload')
-    //this -> game -> Es el juego, con this se refiere a si mismo accediendo a sus metodos y atributos
-    // image(x, y, id-asset)
+function preload() {
     this.load.image(
         'cloud1',
         '../assets/scenery/overworld/cloud1.png'
@@ -43,30 +40,22 @@ function preload () {
         '../assets/scenery/overworld/floorbricks.png'
     )
 
-    this.load.spritesheet(
-        'mario', //id 
-        '../assets/entities/mario.png', //ubicacion
-        { frameWidth: 18, frameHeight: 16 } //Framewidth es el espaciado entre posiciones en el png
+    this.load.image(
+        'supermushroom',
+        '../assets/collectibles/super-mushroom.png'
     )
 
-    this.load.audio( 
-        'gameover',
-        '../assets/sound/music/gameover.mp3'
-    )
+    initSpritesheet(this)
+    initAudio(this)
+} // 1.
 
-     this.load.audio(
-         'jump',
-         '../assets/sound/effects/jump.mp3'
-    )
+function create() {
+    createAnimations(this)
 
-} //1
-
-function create () {
-
-    console.log('create')
+    // image(x, y, id-del-asset)
     this.add.image(100, 50, 'cloud1')
-    .setOrigin(0, 0)
-    .setScale(0.15)
+        .setOrigin(0, 0)
+        .setScale(0.15)
 
     this.floor = this.physics.add.staticGroup()
 
@@ -76,77 +65,150 @@ function create () {
         .refreshBody()
 
     this.floor
-        .create(160, config.height -16, 'floorbricks')
+        .create(150, config.height - 16, 'floorbricks')
         .setOrigin(0, 0.5)
         .refreshBody()
 
-    // this.add.tileSprite(0, config.height - 32, 64, 32, 'floorbricks')
-    //     //tileSprite(extr(x), y, x, extr(y), id)
-    //     .setOrigin(0, 0)
+    this.mario = this.physics.add.sprite(50, 100, 'mario')
+        .setOrigin(0, 1)
+        .setCollideWorldBounds(true)
+        .setGravityY(300)
 
-    // this.add.tileSprite(100, config.height - 32, 64, 32, 'floorbricks')
-    //     .setOrigin(0, 0)
+    this.enemy = this.physics.add.sprite(120, config.height - 30, 'goomba')
+        .setOrigin(0, 1)
+        .setGravityY(300)
+        .setVelocityX(-50)
+    this.enemy.anims.play('goomba-walk', true)
 
-    // this.mario = this.add.sprite(50, 210, 'mario')
-    // .setOrigin(0,1)
-
-    this.mario = this.physics.add.sprite(50, 11, 'mario')
-    .setOrigin(0, 1)
-    .setCollideWorldBounds(true)
-    .setGravityY(500)
+    this.collectibes = this.physics.add.staticGroup()
+    this.collectibes.create(150, 150, 'coin').anims.play('coin-idle', true)
+    this.collectibes.create(300, 150, 'coin').anims.play('coin-idle', true)
+    this.collectibes.create(200, config.height - 40, 'supermushroom').anims.play('supermushroom-idle', true)
+    this.physics.add.overlap(this.mario, this.collectibes, collectItem, null, this)
 
     this.physics.world.setBounds(0, 0, 2000, config.height)
-
     this.physics.add.collider(this.mario, this.floor)
+    this.physics.add.collider(this.enemy, this.floor)
+    this.physics.add.collider(this.mario, this.enemy, onHitEnemy, null, this)
 
     this.cameras.main.setBounds(0, 0, 2000, config.height)
     this.cameras.main.startFollow(this.mario)
 
-    createAnimations(this)
-
     this.keys = this.input.keyboard.createCursorKeys()
-    //permite identificar las teclas del teclado
+}
 
-} //2
+function collectItem(mario, item) {
+    const { texture: { key } } = item
+    item.destroy()
 
-function update () {
-    console.log('update')
-    if (this.mario.isDead) return //Para terminar en caso de muerte
+    if (key === 'coin') {
+        playAudio('coin-pickup', this, { volume: 0.1 })
+        addToScore(100, item, this)
+    } else if (key === 'supermushroom') {
+        this.physics.world.pause()
+        this.anims.pauseAll()
 
-    if (this.keys.left.isDown){ //Si la tecla izquierda esta presionada mueve hacia la izquierda, eje x - 2
-        this.mario.anims.play('mario-walk', true)
-        this.mario.x -= 2
-        this.mario.flipX = true
-    } else if (this.keys.right.isDown) { //Si la tecla derecha esta presionada mueve hacia la derecha, eje x + 2
-        this.mario.anims.play('mario-walk', true)
-        this.mario.x += 2
-        this.mario.flipX = false
-    } else {
-        this.mario.anims.play('mario-idle', true)
-    }
+        playAudio('powerup', this, { volume: 0.1 })
 
-    if (this.keys.up.isDown && this.mario.body.touching.down){ //Salto realista afectado por gravedad
-        this.mario.setVelocityY(-300)
-        this.mario.anims.play('mario-jump', true)
-        this.sound.add('jump', {volume: 0.2}).play()
-    }
-
-    // Muerte de Mario
-    if (this.mario.y >= config.height){ // Si se excede el limite se cambia de estado y animacion de muerte
-        this.mario.isDead = true
-        this.mario.anims.play('mario-dead')
-        this.mario.setCollideWorldBounds(false)
-        this.sound.add('gameover', {volume: 0.2}).play()
-
-        setTimeout(() => { //Esperar 100 mlseg y desplazar hacia arriba
-            this.mario.setVelocityY(-350)
+        let i = 0
+        const interval = setInterval(() => {
+            i++
+            mario.anims.play(i % 2 === 0
+                ? 'mario-grown-idle'
+                : 'mario-idle'
+            )
         }, 100)
 
-        setTimeout(() => { //Esperar 2000 mlseg y reiniciar la escena 
-            this.scene.restart()
-        }, 2000)
-    }
-} //3 -> continuamente, estara generando fps en la seccion de consola de la web
+        mario.isBlocked = true
+        mario.isGrown = true
 
-//Los sprites son imagenes que contienen todas las posiciones de una entidad
-//Se carga una sola imagen en seis posiciones o mas en lugar de cargar seis imagenes
+        setTimeout(() => {
+            mario.setDisplaySize(18, 32)
+            mario.body.setSize(18, 32)
+
+            this.anims.resumeAll()
+            mario.isBlocked = false
+            clearInterval(interval)
+            this.physics.world.resume()
+        }, 1000)
+    }
+}
+
+function addToScore(scoreToAdd, origin, game) {
+    const scoreText = game.add.text(
+        origin.x,
+        origin.y,
+        scoreToAdd,
+        {
+            fontFamily: 'pixel',
+            fontSize: config.width / 40
+        }
+    )
+
+    game.tweens.add({
+        targets: scoreText,
+        duration: 500,
+        y: scoreText.y - 20,
+        onComplete: () => {
+            game.tweens.add({
+                targets: scoreText,
+                duration: 100,
+                alpha: 0,
+                onComplete: () => {
+                    scoreText.destroy()
+                }
+            })
+        }
+    })
+}
+
+function onHitEnemy(mario, enemy) {
+    if (mario.body.touching.down && enemy.body.touching.up) {
+        enemy.anims.play('goomba-hurt', true)
+        enemy.setVelocityX(0)
+        mario.setVelocityY(-200)
+
+        playAudio('goomba-stomp', this)
+        addToScore(200, mario, this)
+
+        setTimeout(() => {
+            enemy.destroy()
+        }, 500)
+    } else {
+        killMario(this)
+    }
+}
+
+function update() { // 3. continuamente
+    const { mario } = this
+
+    checkControls(this)
+
+    // check if mario is dead
+    if (mario.y >= config.height) {
+        killMario(this)
+    }
+}
+
+function killMario(game) {
+    const { mario, scene } = game
+
+    if (mario.isDead) return
+
+    mario.isDead = true
+    mario.anims.play('mario-dead')
+    mario.setCollideWorldBounds(false)
+
+    playAudio('gameover', game, { volume: 0.05 })
+
+    mario.body.checkCollision.none = true
+    mario.setVelocityX(0)
+
+    setTimeout(() => {
+        mario.setVelocityY(-250)
+    }, 100)
+
+    setTimeout(() => {
+        scene.restart()
+    }, 2000)
+}
